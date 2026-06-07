@@ -3,5 +3,5 @@ services:
     name: goaudiogo
     runtime: docker
     plan: free
-    healthCheckPath: /health
+    healthCheckPath: /ping
     autoDeploy: true

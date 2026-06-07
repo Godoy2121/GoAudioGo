@@ -43,8 +43,8 @@ class DownloadRequest(BaseModel):
 
 # ── API routes (must be defined before static mount) ────────────────────────
 
-@app.get("/health")
-async def health():
+@app.get("/ping")
+async def ping():
     return {"status": "ok"}
 
 

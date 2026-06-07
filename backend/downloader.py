@@ -7,7 +7,8 @@ from typing import Dict, Any
 
 import yt_dlp
 
-SPOTDL_BIN = shutil.which("spotdl") or "spotdl"
+# pipx instala en /root/.local/bin — ruta explícita como fallback
+SPOTDL_BIN = shutil.which("spotdl") or "/root/.local/bin/spotdl"
 COOKIES_PATH = Path(os.environ.get("COOKIES_PATH", Path(__file__).parent.parent / "cookies.txt"))
 
 
@@ -18,7 +19,6 @@ def is_spotify_url(url: str) -> bool:
 async def run_download(url: str, job_id: str, jobs: Dict[str, Any], downloads_dir: Path):
     job_dir = downloads_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-
     jobs[job_id]["status"] = "downloading"
 
     try:
@@ -48,7 +48,8 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
             jobs[job_id]["status"] = "converting"
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        # m4a primero (compatible con iOS/Android client), luego webm, luego lo que haya
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
@@ -59,11 +60,10 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": False,
-        # Usar cliente iOS primero: menos detectado como bot que el cliente web
-        "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
+        # Probar iOS → Android → web en orden; iOS/Android evitan el bot-check en muchos casos
+        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
     }
 
-    # Usar cookies si están disponibles (resuelve el bloqueo de YouTube en servidores)
     if COOKIES_PATH.exists():
         ydl_opts["cookiefile"] = str(COOKIES_PATH)
 
@@ -85,7 +85,9 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
     if not mp3_files:
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = (
-            "No se generó el MP3. Si es YouTube, sube tus cookies en ⚙ Configuración."
+            "YouTube bloqueó la descarga. Sube tus cookies en ⚙ Cookies de YouTube."
+            if "youtube" in url or "youtu.be" in url
+            else "No se generó el MP3. Comprueba que la URL sea válida."
         )
         return
 
@@ -108,21 +110,27 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
 async def _download_spotify(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
     jobs[job_id]["title"] = "Buscando en Spotify..."
 
+    # {title}.{output-ext} para que spotdl guarde como nombre-cancion.mp3 en job_dir
+    output_template = str(job_dir / "{title}.{output-ext}")
+
     proc = await asyncio.create_subprocess_exec(
         SPOTDL_BIN,
         url,
-        "--output", str(job_dir),
+        "--output", output_template,
         "--format", "mp3",
         "--bitrate", "192k",
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
+        stderr=asyncio.subprocess.PIPE,
     )
 
+    stdout_lines = []
     progress = 10
+
     async for raw_line in proc.stdout:
         line = raw_line.decode("utf-8", errors="replace").strip()
         if not line:
             continue
+        stdout_lines.append(line)
         if any(k in line for k in ("Downloading", "Downloaded", "Processing")):
             progress = min(progress + 15, 85)
             jobs[job_id]["progress"] = progress
@@ -131,18 +139,20 @@ async def _download_spotify(url: str, job_id: str, jobs: Dict[str, Any], job_dir
             if len(parts) >= 2 and parts[1]:
                 jobs[job_id]["title"] = parts[1]
 
+    stderr_out = (await proc.stderr.read()).decode("utf-8", errors="replace")
     await proc.wait()
 
     if proc.returncode != 0:
+        detail = (stderr_out or "\n".join(stdout_lines))[:300]
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["error"] = "Error al descargar de Spotify. Verifica la URL e intenta de nuevo."
+        jobs[job_id]["error"] = f"Error de spotdl: {detail}"
         return
 
     mp3_files = sorted(job_dir.glob("*.mp3"))
 
     if not mp3_files:
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["error"] = "No se generó el archivo MP3."
+        jobs[job_id]["error"] = "spotdl no encontró el archivo. Verifica que la URL de Spotify sea pública."
         return
 
     if len(mp3_files) == 1:

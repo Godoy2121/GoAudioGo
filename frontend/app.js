@@ -215,7 +215,7 @@ function applyProgress(job) {
     const labels = {
         pending:     "Iniciando...",
         downloading: "Descargando audio...",
-        converting:  "Convirtiendo a MP3...",
+        converting:  "Convirtiendo a MP3 (puede tardar en vídeos largos)...",
         done:        "¡Completado!",
         error:       "Error",
     };
@@ -308,5 +308,5 @@ checkCookiesStatus();
 // Render free tier duerme tras 15 min sin uso.
 // Hacemos ping al arrancar la página para que ya esté despierto cuando el usuario lo necesite.
 if (API_BASE) {
-    fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60_000) }).catch(() => {});
+    fetch(`${API_BASE}/ping`, { signal: AbortSignal.timeout(60_000) }).catch(() => {});
 }
