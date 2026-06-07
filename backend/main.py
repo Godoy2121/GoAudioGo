@@ -78,18 +78,22 @@ async def search_youtube(q: str, limit: int = 8):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             raw = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
             entries = raw.get("entries", []) if raw else []
-            return [
-                {
-                    "id": e["id"],
+            results = []
+            for e in entries:
+                vid = e.get("id", "")
+                # Los IDs de vídeo de YouTube tienen exactamente 11 caracteres.
+                # Los canales (UC...) tienen 24 y las playlists (PL...) más de 11.
+                if len(vid) != 11:
+                    continue
+                results.append({
+                    "id": vid,
                     "title": e.get("title", ""),
-                    "url": f"https://www.youtube.com/watch?v={e['id']}",
-                    "thumbnail": f"https://i.ytimg.com/vi/{e['id']}/mqdefault.jpg",
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "thumbnail": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg",
                     "duration": _fmt_duration(e.get("duration")),
                     "channel": e.get("channel") or e.get("uploader", ""),
-                }
-                for e in entries
-                if e.get("id")
-            ]
+                })
+            return results
 
     try:
         return await loop.run_in_executor(None, do_search)
