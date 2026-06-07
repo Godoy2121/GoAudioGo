@@ -52,6 +52,16 @@ def _extract_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _clean_title(title: str) -> str:
+    """Elimina sufijos de YouTube para obtener título limpio para SoundCloud."""
+    cleaned = re.sub(
+        r'\s*[\(\[【].*?(?:oficial|official|video|clip|remaster|lyric|audio|4k|hd|hq|mv|live|vevo|ft\.|feat\.).*?[\)\]】]',
+        '', title, flags=re.IGNORECASE
+    )
+    cleaned = re.sub(r'\s*[\(\[【][^\)\]】]{0,15}[\)\]】]$', '', cleaned)
+    return cleaned.strip() or title
+
+
 async def _try_piped(session: aiohttp.ClientSession, base: str, video_id: str) -> tuple[str, str]:
     try:
         async with session.get(f"{base}/streams/{video_id}", timeout=aiohttp.ClientTimeout(total=8)) as r:
@@ -154,24 +164,42 @@ async def _download_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir
         )
         _, stderr = await proc.communicate()
 
-        if proc.returncode == 0 and output_path.exists():
+        if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 500_000:
             jobs[job_id]["file"] = str(output_path)
             jobs[job_id]["progress"] = 100
             jobs[job_id]["status"] = "done"
             return
 
         err = stderr.decode("utf-8", errors="replace")[-200:]
-        print(f"[ffmpeg] falló: {err}")
+        print(f"[ffmpeg] falló o archivo muy pequeño: {err}")
 
-    # Fallback: buscar en SoundCloud por título
+    # Fallback 1: yt-dlp con URL de Invidious
+    print(f"[fallback-invidious] video_id={video_id}")
+    for inv_base in ["https://yewtu.be", "https://inv.riverside.rocks", "https://invidious.fdn.fr"]:
+        try:
+            inv_url = f"{inv_base}/watch?v={video_id}"
+            await _download_ytdlp(inv_url, job_id, jobs, job_dir)
+            if jobs[job_id]["status"] == "done":
+                return
+        except Exception as exc:
+            print(f"[invidious-ytdlp] {inv_base}: {exc}")
+
+    # Fallback 2: SoundCloud con título limpio
     if title:
-        print(f"[fallback] Buscando en SoundCloud: {title}")
-        jobs[job_id]["title"] = f"Buscando en SoundCloud..."
-        await _download_ytdlp(f"scsearch1:{title}", job_id, jobs, job_dir)
+        clean = _clean_title(title)
+        print(f"[fallback-soundcloud] '{clean}'")
+        jobs[job_id]["title"] = "Buscando en SoundCloud..."
+        jobs[job_id]["status"] = "downloading"
+        await _download_ytdlp(f"scsearch1:{clean}", job_id, jobs, job_dir)
+        if jobs[job_id]["status"] == "done":
+            mp3 = jobs[job_id].get("file", "")
+            if mp3 and Path(mp3).exists() and Path(mp3).stat().st_size < 500_000:
+                jobs[job_id]["status"] = "error"
+                jobs[job_id]["error"] = "Solo hay preview de 30s en SoundCloud. Busca el link directo de YouTube o Spotify."
         return
 
     jobs[job_id]["status"] = "error"
-    jobs[job_id]["error"] = "No se pudo descargar desde YouTube. Prueba pegando un link de SoundCloud directamente."
+    jobs[job_id]["error"] = "No se pudo descargar. Prueba pegando un link de Spotify o SoundCloud."
 
 
 async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
