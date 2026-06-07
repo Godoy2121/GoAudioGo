@@ -13,7 +13,6 @@ import yt_dlp
 SPOTDL_BIN = shutil.which("spotdl") or "/root/.local/bin/spotdl"
 COOKIES_PATH = Path(os.environ.get("COOKIES_PATH", Path(__file__).parent.parent / "cookies.txt"))
 
-# Probamos todas en paralelo — devuelve la primera que responda
 PIPED_INSTANCES = [
     "https://pipedapi.kavin.rocks",
     "https://pipedapi.tokhmi.xyz",
@@ -53,7 +52,6 @@ def _extract_video_id(url: str) -> str | None:
 
 
 def _clean_title(title: str) -> str:
-    """Elimina sufijos de YouTube para obtener título limpio para SoundCloud."""
     cleaned = re.sub(
         r'\s*[\(\[【].*?(?:oficial|official|video|clip|remaster|lyric|audio|4k|hd|hq|mv|live|vevo|ft\.|feat\.).*?[\)\]】]',
         '', title, flags=re.IGNORECASE
@@ -100,13 +98,10 @@ async def _try_invidious(session: aiohttp.ClientSession, base: str, video_id: st
 
 
 async def _get_audio_stream(video_id: str) -> tuple[str, str]:
-    """Prueba Piped e Invidious en paralelo. Devuelve (stream_url, title)."""
     headers = {"User-Agent": "Mozilla/5.0 (compatible; GoAudioGo/1.0)"}
     async with aiohttp.ClientSession(headers=headers) as session:
-        # Lanzar todas las peticiones a Piped en paralelo
         piped_tasks = [_try_piped(session, base, video_id) for base in PIPED_INSTANCES]
         invidious_tasks = [_try_invidious(session, base, video_id) for base in INVIDIOUS_INSTANCES]
-
         results = await asyncio.gather(*piped_tasks, *invidious_tasks, return_exceptions=True)
 
     for r in results:
@@ -142,6 +137,7 @@ async def _download_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir
 
     jobs[job_id]["title"] = title or "Obteniendo audio..."
 
+    # ── Paso 1: Piped / Invidious en paralelo ──────────────────────────────────
     stream_url, stream_title = await _get_audio_stream(video_id)
 
     if stream_url:
@@ -171,35 +167,104 @@ async def _download_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir
             return
 
         err = stderr.decode("utf-8", errors="replace")[-200:]
-        print(f"[ffmpeg] falló o archivo muy pequeño: {err}")
+        print(f"[piped→ffmpeg] falló o archivo muy pequeño: {err}")
 
-    # Fallback 1: yt-dlp con URL de Invidious
-    print(f"[fallback-invidious] video_id={video_id}")
-    for inv_base in ["https://yewtu.be", "https://inv.riverside.rocks", "https://invidious.fdn.fr"]:
-        try:
-            inv_url = f"{inv_base}/watch?v={video_id}"
-            await _download_ytdlp(inv_url, job_id, jobs, job_dir)
-            if jobs[job_id]["status"] == "done":
-                return
-        except Exception as exc:
-            print(f"[invidious-ytdlp] {inv_base}: {exc}")
+    # ── Paso 2: yt-dlp directo (con cookies si hay) ────────────────────────────
+    print(f"[fallback-ytdlp] video_id={video_id}")
+    jobs[job_id]["status"] = "downloading"
+    jobs[job_id]["progress"] = 10
+    try:
+        before = set(job_dir.glob("*.mp3"))
+        await _run_ytdlp_youtube(url, job_id, jobs, job_dir)
+        after = set(job_dir.glob("*.mp3"))
+        new_files = sorted(after - before)
+        if new_files:
+            jobs[job_id]["file"] = str(new_files[0])
+            jobs[job_id]["progress"] = 100
+            jobs[job_id]["status"] = "done"
+            return
+        if jobs[job_id].get("status") == "done":
+            return
+    except Exception as exc:
+        print(f"[ytdlp] error: {exc}")
+        jobs[job_id]["status"] = "downloading"
 
-    # Fallback 2: SoundCloud con título limpio
+    # ── Paso 3: SoundCloud (último recurso) ────────────────────────────────────
     if title:
         clean = _clean_title(title)
         print(f"[fallback-soundcloud] '{clean}'")
         jobs[job_id]["title"] = "Buscando en SoundCloud..."
         jobs[job_id]["status"] = "downloading"
-        await _download_ytdlp(f"scsearch1:{clean}", job_id, jobs, job_dir)
-        if jobs[job_id]["status"] == "done":
-            mp3 = jobs[job_id].get("file", "")
-            if mp3 and Path(mp3).exists() and Path(mp3).stat().st_size < 500_000:
-                jobs[job_id]["status"] = "error"
-                jobs[job_id]["error"] = "Solo hay preview de 30s en SoundCloud. Busca el link directo de YouTube o Spotify."
-        return
+        jobs[job_id]["progress"] = 5
+        try:
+            before = set(job_dir.glob("*.mp3"))
+            await _download_ytdlp(f"scsearch1:{clean}", job_id, jobs, job_dir)
+            after = set(job_dir.glob("*.mp3"))
+            new_files = sorted(after - before)
+            if new_files:
+                mp3 = new_files[0]
+                if mp3.stat().st_size < 500_000:
+                    jobs[job_id]["status"] = "error"
+                    jobs[job_id]["error"] = (
+                        "Solo hay preview de 30s en SoundCloud. "
+                        "Sube cookies actualizadas de YouTube o pega un link de Spotify."
+                    )
+                else:
+                    jobs[job_id]["file"] = str(mp3)
+                    jobs[job_id]["progress"] = 100
+                    jobs[job_id]["status"] = "done"
+            return
+        except Exception as exc:
+            print(f"[soundcloud] error: {exc}")
 
     jobs[job_id]["status"] = "error"
-    jobs[job_id]["error"] = "No se pudo descargar. Prueba pegando un link de Spotify o SoundCloud."
+    jobs[job_id]["error"] = (
+        "No se pudo descargar. Prueba: 1) actualizar cookies de YouTube, "
+        "2) pegar un link de Spotify, o 3) buscar en SoundCloud directamente."
+    )
+
+
+async def _run_ytdlp_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
+    """yt-dlp directo contra YouTube, con cookies si están disponibles."""
+    loop = asyncio.get_event_loop()
+
+    def progress_hook(d: dict):
+        if d["status"] == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
+            downloaded = d.get("downloaded_bytes", 0)
+            if total:
+                jobs[job_id]["progress"] = min(int((downloaded / total) * 80), 80)
+            info = d.get("info_dict", {})
+            if info.get("title") and not jobs[job_id].get("title"):
+                jobs[job_id]["title"] = info["title"]
+        elif d["status"] == "finished":
+            jobs[job_id]["progress"] = 80
+            jobs[job_id]["status"] = "converting"
+
+    ydl_opts = {
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+        "outtmpl": str(job_dir / "%(title)s.%(ext)s"),
+        "progress_hooks": [progress_hook],
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
+    }
+
+    if COOKIES_PATH.exists():
+        ydl_opts["cookiefile"] = str(COOKIES_PATH)
+        print(f"[ytdlp-yt] con cookies ({COOKIES_PATH.stat().st_size} bytes)")
+    else:
+        print("[ytdlp-yt] sin cookies")
+
+    def do_download():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info and not jobs[job_id].get("title"):
+                jobs[job_id]["title"] = info.get("title", "Audio")
+
+    await loop.run_in_executor(None, do_download)
 
 
 async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
@@ -272,7 +337,7 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
             if total:
                 jobs[job_id]["progress"] = min(int((downloaded / total) * 80), 80)
             info = d.get("info_dict", {})
-            if info.get("title") and not jobs[job_id]["title"]:
+            if info.get("title") and not jobs[job_id].get("title"):
                 jobs[job_id]["title"] = info["title"]
         elif d["status"] == "finished":
             jobs[job_id]["progress"] = 80
@@ -291,7 +356,7 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
     def do_download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            if info and not jobs[job_id]["title"]:
+            if info and not jobs[job_id].get("title"):
                 jobs[job_id]["title"] = info.get("title", "Audio")
 
     await loop.run_in_executor(None, do_download)

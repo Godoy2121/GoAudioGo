@@ -103,7 +103,7 @@ urlInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") startDownload();
 });
 
-downloadBtn.addEventListener("click", startDownload);
+downloadBtn.addEventListener("click", () => startDownload());
 
 document.getElementById("newBtn").addEventListener("click", reset);
 document.getElementById("retryBtn").addEventListener("click", () => {
@@ -169,7 +169,10 @@ async function startDownload(hintTitle = "") {
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: "Error desconocido" }));
-            throw new Error(err.detail || "Error al iniciar la descarga");
+            const detail = Array.isArray(err.detail)
+                ? err.detail.map(e => e.msg || JSON.stringify(e)).join(", ")
+                : (err.detail || "Error al iniciar la descarga");
+            throw new Error(detail);
         }
 
         const { job_id } = await res.json();
