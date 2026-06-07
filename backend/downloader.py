@@ -19,15 +19,14 @@ def is_youtube_url(url: str) -> bool:
     return "youtube.com" in url or "youtu.be" in url
 
 
-async def run_download(url: str, job_id: str, jobs: Dict[str, Any], downloads_dir: Path):
+async def run_download(url: str, job_id: str, jobs: Dict[str, Any], downloads_dir: Path, title: str = ""):
     job_dir = downloads_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     jobs[job_id]["status"] = "downloading"
 
     try:
         if is_spotify_url(url) or is_youtube_url(url):
-            # spotdl busca en YouTube Music — menos bloqueado que YouTube directo desde servidores
-            await _download_spotdl(url, job_id, jobs, job_dir)
+            await _download_spotdl(url, job_id, jobs, job_dir, title)
         else:
             await _download_ytdlp(url, job_id, jobs, job_dir)
     except Exception as e:
@@ -35,17 +34,27 @@ async def run_download(url: str, job_id: str, jobs: Dict[str, Any], downloads_di
         jobs[job_id]["error"] = str(e)
 
 
-async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
+async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path, title: str = ""):
     jobs[job_id]["title"] = "Buscando canción..."
+
+    # Para YouTube: buscar por título en YouTube Music es más fiable que la URL directa
+    # (la URL de youtube.com puede estar bloqueada desde servidores)
+    if is_youtube_url(url) and title:
+        query = title
+    else:
+        query = url
 
     output_template = str(job_dir / "{title}.{output-ext}")
 
+    cmd = [SPOTDL_BIN, query, "--output", output_template, "--format", "mp3", "--bitrate", "192k"]
+
+    if COOKIES_PATH.exists():
+        cmd += ["--cookie-file", str(COOKIES_PATH)]
+
+    print(f"[spotdl] cmd: {' '.join(cmd)}")
+
     proc = await asyncio.create_subprocess_exec(
-        SPOTDL_BIN,
-        url,
-        "--output", output_template,
-        "--format", "mp3",
-        "--bitrate", "192k",
+        *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -58,6 +67,7 @@ async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir:
         if not line:
             continue
         stdout_lines.append(line)
+        print(f"[spotdl] {line}")
         if any(k in line for k in ("Downloading", "Downloaded", "Processing")):
             progress = min(progress + 15, 85)
             jobs[job_id]["progress"] = progress
@@ -67,27 +77,31 @@ async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir:
                 jobs[job_id]["title"] = parts[1]
 
     stderr_out = (await proc.stderr.read()).decode("utf-8", errors="replace")
+    if stderr_out.strip():
+        print(f"[spotdl stderr] {stderr_out[:500]}")
     await proc.wait()
 
     if proc.returncode != 0:
         detail = (stderr_out or "\n".join(stdout_lines))[:400]
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["error"] = f"No se pudo descargar: {detail}"
+        jobs[job_id]["error"] = f"Error de spotdl: {detail}"
         return
 
-    mp3_files = sorted(job_dir.glob("*.mp3"))
+    # Buscar recursivamente por si spotdl creó subdirectorios
+    mp3_files = sorted(job_dir.rglob("*.mp3"))
 
     if not mp3_files:
+        detail = "\n".join(stdout_lines[-5:]) or stderr_out[:200] or "sin salida"
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["error"] = "No se generó el MP3. La canción puede no estar disponible."
+        jobs[job_id]["error"] = f"No se generó el MP3. spotdl: {detail}"
         return
 
     if len(mp3_files) == 1:
         jobs[job_id]["file"] = str(mp3_files[0])
         jobs[job_id]["title"] = mp3_files[0].stem
     else:
-        title = jobs[job_id].get("title", "canciones")
-        safe_title = "".join(c for c in title if c.isalnum() or c in " -_")[:60]
+        t = jobs[job_id].get("title", "canciones")
+        safe_title = "".join(c for c in t if c.isalnum() or c in " -_")[:60]
         zip_path = job_dir / f"{safe_title}.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in mp3_files:
@@ -101,7 +115,7 @@ async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir:
 
 
 async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
-    """Descarga desde SoundCloud, Twitch, Vimeo y otros servicios (no YouTube/Spotify)."""
+    """Descarga desde SoundCloud, Twitch, Vimeo y otros (no YouTube/Spotify)."""
     loop = asyncio.get_event_loop()
 
     def progress_hook(d: dict):
@@ -154,8 +168,8 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
     if len(mp3_files) == 1:
         jobs[job_id]["file"] = str(mp3_files[0])
     else:
-        title = jobs[job_id].get("title", "audio")
-        safe_title = "".join(c for c in title if c.isalnum() or c in " -_")[:60]
+        t = jobs[job_id].get("title", "audio")
+        safe_title = "".join(c for c in t if c.isalnum() or c in " -_")[:60]
         zip_path = job_dir / f"{safe_title}.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in mp3_files:

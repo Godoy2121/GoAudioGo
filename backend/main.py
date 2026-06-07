@@ -41,6 +41,7 @@ FILE_TTL_SECONDS = int(os.environ.get("FILE_TTL", 2 * 3600))  # 2 hours default
 
 class DownloadRequest(BaseModel):
     url: str
+    title: str = ""
 
 
 # ── API routes (must be defined before static mount) ────────────────────────
@@ -140,7 +141,7 @@ async def start_download(req: DownloadRequest):
         "is_playlist": False,
     }
 
-    asyncio.create_task(run_download(url, job_id, jobs, DOWNLOADS_DIR))
+    asyncio.create_task(run_download(url, job_id, jobs, DOWNLOADS_DIR, req.title))
     return {"job_id": job_id}
 
 

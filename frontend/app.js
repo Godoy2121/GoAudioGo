@@ -134,7 +134,7 @@ function reset() {
     progressPct.textContent = "0%";
 }
 
-async function startDownload() {
+async function startDownload(hintTitle = "") {
     const url = urlInput.value.trim();
 
     if (!url) {
@@ -164,7 +164,7 @@ async function startDownload() {
         const res = await fetch(`${API_BASE}/api/download`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url }),
+            body: JSON.stringify({ url, title: hintTitle }),
         });
 
         if (!res.ok) {
@@ -312,17 +312,18 @@ async function runSearch() {
                     <div class="result-title" title="${escHtml(r.title)}">${escHtml(r.title)}</div>
                     <div class="result-meta">${escHtml(r.channel)}${r.duration ? " · " + r.duration : ""}</div>
                 </div>
-                <button class="result-dl-btn" data-url="${r.url}" title="Descargar">↓</button>
+                <button class="result-dl-btn" data-url="${r.url}" data-title="${escHtml(r.title)}" title="Descargar">↓</button>
             </div>
         `).join("");
 
         resultsList.querySelectorAll(".result-dl-btn").forEach(btn => {
             btn.addEventListener("click", () => {
                 const url = btn.dataset.url;
+                const title = btn.dataset.title || "";
                 setMode("url");
                 urlInput.value = url;
                 platformIconEl.textContent = platformIcon(url);
-                startDownload();
+                startDownload(title);
             });
         });
 
