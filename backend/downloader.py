@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import re
 import shutil
@@ -23,7 +22,6 @@ PIPED_INSTANCES = [
     "https://watchapi.whatever.social",
     "https://pipedapi.in.projectsegfau.lt",
     "https://pipedapi.drgns.space",
-    "https://piped.yt/",
 ]
 
 INVIDIOUS_INSTANCES = [
@@ -60,6 +58,101 @@ def _clean_title(title: str) -> str:
     return cleaned.strip() or title
 
 
+# ── cobalt.tools ──────────────────────────────────────────────────────────────
+
+async def _try_cobalt(youtube_url: str) -> tuple[str, str]:
+    """Pide a cobalt.tools el MP3 de un vídeo de YouTube.
+    cobalt descarga desde sus propios servidores (no datacenter), así que
+    no le afecta el bloqueo de IPs de Render.
+    Devuelve (url_descarga, nombre_archivo) o ("", "").
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.cobalt.tools/",
+                json={
+                    "url": youtube_url,
+                    "downloadMode": "audio",
+                    "audioFormat": "mp3",
+                    "audioBitrate": "192",
+                    "filenameStyle": "basic",
+                },
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "User-Agent": "Mozilla/5.0 (compatible; GoAudioGo/1.0)",
+                },
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                print(f"[cobalt] HTTP {r.status}")
+                if r.status not in (200, 201):
+                    text = await r.text()
+                    print(f"[cobalt] body: {text[:200]}")
+                    return "", ""
+                data = await r.json(content_type=None)
+
+        status = data.get("status", "")
+        dl_url = data.get("url", "")
+        filename = data.get("filename", "audio.mp3")
+
+        if status in ("tunnel", "redirect", "stream") and dl_url:
+            print(f"[cobalt] OK {status}: {filename}")
+            return dl_url, filename
+
+        print(f"[cobalt] no usable: status={status} data={str(data)[:300]}")
+    except Exception as exc:
+        print(f"[cobalt] excepción: {exc}")
+    return "", ""
+
+
+async def _download_from_cobalt_url(
+    dl_url: str, filename: str, job_id: str, jobs: Dict[str, Any], job_dir: Path
+) -> bool:
+    """Descarga el fichero que devuelve cobalt, actualiza progreso. True = éxito."""
+    safe_stem = re.sub(r'[^\w\s\-]', '', Path(filename).stem).strip()[:80] or "audio"
+    output_path = job_dir / f"{safe_stem}.mp3"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                dl_url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; GoAudioGo/1.0)"},
+                timeout=aiohttp.ClientTimeout(total=300),
+            ) as r:
+                if r.status != 200:
+                    print(f"[cobalt-dl] HTTP {r.status}")
+                    return False
+
+                total = int(r.headers.get("Content-Length", 0))
+                downloaded = 0
+                with open(output_path, "wb") as f:
+                    async for chunk in r.content.iter_chunked(16384):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            jobs[job_id]["progress"] = min(int(downloaded / total * 90), 90)
+
+        size = output_path.stat().st_size if output_path.exists() else 0
+        if size < 500_000:
+            print(f"[cobalt-dl] archivo muy pequeño: {size} bytes")
+            if output_path.exists():
+                output_path.unlink()
+            return False
+
+        jobs[job_id]["file"] = str(output_path)
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["status"] = "done"
+        return True
+
+    except Exception as exc:
+        print(f"[cobalt-dl] error: {exc}")
+        if output_path.exists():
+            output_path.unlink()
+        return False
+
+
+# ── Piped / Invidious ─────────────────────────────────────────────────────────
+
 async def _try_piped(session: aiohttp.ClientSession, base: str, video_id: str) -> tuple[str, str]:
     try:
         async with session.get(f"{base}/streams/{video_id}", timeout=aiohttp.ClientTimeout(total=8)) as r:
@@ -80,7 +173,7 @@ async def _try_invidious(session: aiohttp.ClientSession, base: str, video_id: st
     try:
         async with session.get(
             f"{base}/api/v1/videos/{video_id}?fields=adaptiveFormats,title",
-            timeout=aiohttp.ClientTimeout(total=8)
+            timeout=aiohttp.ClientTimeout(total=8),
         ) as r:
             if r.status != 200:
                 return "", ""
@@ -89,27 +182,31 @@ async def _try_invidious(session: aiohttp.ClientSession, base: str, video_id: st
         formats = [f for f in data.get("adaptiveFormats", []) if f.get("type", "").startswith("audio")]
         if formats:
             best = max(formats, key=lambda f: int(f.get("bitrate", 0)))
-            url = best.get("url", "")
-            if url:
-                return url, title
+            u = best.get("url", "")
+            if u:
+                return u, title
     except Exception:
         pass
     return "", ""
 
 
-async def _get_audio_stream(video_id: str) -> tuple[str, str]:
+async def _get_piped_stream(video_id: str) -> tuple[str, str]:
     headers = {"User-Agent": "Mozilla/5.0 (compatible; GoAudioGo/1.0)"}
     async with aiohttp.ClientSession(headers=headers) as session:
-        piped_tasks = [_try_piped(session, base, video_id) for base in PIPED_INSTANCES]
-        invidious_tasks = [_try_invidious(session, base, video_id) for base in INVIDIOUS_INSTANCES]
-        results = await asyncio.gather(*piped_tasks, *invidious_tasks, return_exceptions=True)
+        tasks = (
+            [_try_piped(session, b, video_id) for b in PIPED_INSTANCES] +
+            [_try_invidious(session, b, video_id) for b in INVIDIOUS_INSTANCES]
+        )
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for r in results:
         if isinstance(r, tuple) and r[0]:
-            print(f"[stream] OK: {r[1]}")
+            print(f"[piped] OK: {r[1]}")
             return r
     return "", ""
 
+
+# ── Entrada principal ─────────────────────────────────────────────────────────
 
 async def run_download(url: str, job_id: str, jobs: Dict[str, Any], downloads_dir: Path, title: str = ""):
     job_dir = downloads_dir / job_id
@@ -122,7 +219,7 @@ async def run_download(url: str, job_id: str, jobs: Dict[str, Any], downloads_di
         elif is_youtube_url(url):
             await _download_youtube(url, job_id, jobs, job_dir, title)
         else:
-            await _download_ytdlp(url, job_id, jobs, job_dir)
+            await _download_generic(url, job_id, jobs, job_dir)
     except Exception as e:
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = str(e)
@@ -135,51 +232,63 @@ async def _download_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir
         jobs[job_id]["error"] = "URL de YouTube inválida"
         return
 
-    jobs[job_id]["title"] = title or "Obteniendo audio..."
+    display_title = title or "Obteniendo audio..."
+    jobs[job_id]["title"] = display_title
 
-    # ── Paso 1: Piped / Invidious en paralelo ──────────────────────────────────
-    stream_url, stream_title = await _get_audio_stream(video_id)
+    # ── 1. cobalt.tools ────────────────────────────────────────────────────────
+    # cobalt descarga desde sus propios servidores → no le afecta el bloqueo de Render
+    print(f"[youtube] intentando cobalt para {video_id}")
+    cobalt_url, cobalt_filename = await _try_cobalt(url)
+    if cobalt_url:
+        stem = cobalt_filename.replace(".mp3", "").strip() or _clean_title(title) or "audio"
+        jobs[job_id]["title"] = stem
+        jobs[job_id]["status"] = "downloading"
+        if await _download_from_cobalt_url(cobalt_url, f"{stem}.mp3", job_id, jobs, job_dir):
+            return
+        print("[cobalt] descarga falló, probando Piped/Invidious...")
+
+    # ── 2. Piped / Invidious → ffmpeg ──────────────────────────────────────────
+    jobs[job_id]["title"] = display_title
+    jobs[job_id]["status"] = "downloading"
+    jobs[job_id]["progress"] = 5
+    stream_url, stream_title = await _get_piped_stream(video_id)
 
     if stream_url:
-        display_title = title or stream_title or "audio"
-        jobs[job_id]["title"] = display_title
+        disp = title or stream_title or "audio"
+        jobs[job_id]["title"] = disp
         jobs[job_id]["status"] = "converting"
         jobs[job_id]["progress"] = 40
 
-        safe_name = re.sub(r'[^\w\s\-]', '', display_title).strip()[:80] or "audio"
-        output_path = job_dir / f"{safe_name}.mp3"
-
+        safe = re.sub(r'[^\w\s\-]', '', disp).strip()[:80] or "audio"
+        out = job_dir / f"{safe}.mp3"
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-y",
             "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "-i", stream_url,
             "-vn", "-acodec", "libmp3lame", "-ab", "192k", "-ar", "44100",
-            str(output_path),
+            str(out),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await proc.communicate()
-
-        if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 500_000:
-            jobs[job_id]["file"] = str(output_path)
+        if proc.returncode == 0 and out.exists() and out.stat().st_size > 500_000:
+            jobs[job_id]["file"] = str(out)
             jobs[job_id]["progress"] = 100
             jobs[job_id]["status"] = "done"
             return
+        print(f"[piped→ffmpeg] falló: {stderr.decode(errors='replace')[-200:]}")
 
-        err = stderr.decode("utf-8", errors="replace")[-200:]
-        print(f"[piped→ffmpeg] falló o archivo muy pequeño: {err}")
-
-    # ── Paso 2: yt-dlp directo (con cookies si hay) ────────────────────────────
-    print(f"[fallback-ytdlp] video_id={video_id}")
+    # ── 3. yt-dlp directo con cookies ──────────────────────────────────────────
+    print(f"[youtube] fallback yt-dlp video_id={video_id}")
     jobs[job_id]["status"] = "downloading"
-    jobs[job_id]["progress"] = 10
+    jobs[job_id]["progress"] = 5
     try:
         before = set(job_dir.glob("*.mp3"))
         await _run_ytdlp_youtube(url, job_id, jobs, job_dir)
         after = set(job_dir.glob("*.mp3"))
-        new_files = sorted(after - before)
-        if new_files:
-            jobs[job_id]["file"] = str(new_files[0])
+        new = sorted(after - before)
+        if new:
+            jobs[job_id]["file"] = str(new[0])
             jobs[job_id]["progress"] = 100
             jobs[job_id]["status"] = "done"
             return
@@ -189,25 +298,25 @@ async def _download_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir
         print(f"[ytdlp] error: {exc}")
         jobs[job_id]["status"] = "downloading"
 
-    # ── Paso 3: SoundCloud (último recurso) ────────────────────────────────────
+    # ── 4. SoundCloud (último recurso) ─────────────────────────────────────────
     if title:
         clean = _clean_title(title)
-        print(f"[fallback-soundcloud] '{clean}'")
-        jobs[job_id]["title"] = "Buscando en SoundCloud..."
+        print(f"[soundcloud] búsqueda: '{clean}'")
+        jobs[job_id]["title"] = f"Buscando '{clean}' en SoundCloud..."
         jobs[job_id]["status"] = "downloading"
         jobs[job_id]["progress"] = 5
         try:
             before = set(job_dir.glob("*.mp3"))
-            await _download_ytdlp(f"scsearch1:{clean}", job_id, jobs, job_dir)
+            await _download_generic(f"scsearch1:{clean}", job_id, jobs, job_dir)
             after = set(job_dir.glob("*.mp3"))
-            new_files = sorted(after - before)
-            if new_files:
-                mp3 = new_files[0]
+            new = sorted(after - before)
+            if new:
+                mp3 = new[0]
                 if mp3.stat().st_size < 500_000:
                     jobs[job_id]["status"] = "error"
                     jobs[job_id]["error"] = (
-                        "Solo hay preview de 30s en SoundCloud. "
-                        "Sube cookies actualizadas de YouTube o pega un link de Spotify."
+                        "YouTube está bloqueado desde el servidor y SoundCloud solo tiene "
+                        "un preview de 30s de esta canción. Prueba pegando un link de Spotify."
                     )
                 else:
                     jobs[job_id]["file"] = str(mp3)
@@ -219,21 +328,20 @@ async def _download_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir
 
     jobs[job_id]["status"] = "error"
     jobs[job_id]["error"] = (
-        "No se pudo descargar. Prueba: 1) actualizar cookies de YouTube, "
-        "2) pegar un link de Spotify, o 3) buscar en SoundCloud directamente."
+        "No se pudo descargar desde YouTube (IP bloqueada). "
+        "Pega un link de Spotify para esta canción."
     )
 
 
 async def _run_ytdlp_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
-    """yt-dlp directo contra YouTube, con cookies si están disponibles."""
     loop = asyncio.get_event_loop()
 
     def progress_hook(d: dict):
         if d["status"] == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
-            downloaded = d.get("downloaded_bytes", 0)
+            dl = d.get("downloaded_bytes", 0)
             if total:
-                jobs[job_id]["progress"] = min(int((downloaded / total) * 80), 80)
+                jobs[job_id]["progress"] = min(int(dl / total * 80), 80)
             info = d.get("info_dict", {})
             if info.get("title") and not jobs[job_id].get("title"):
                 jobs[job_id]["title"] = info["title"]
@@ -241,7 +349,7 @@ async def _run_ytdlp_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_di
             jobs[job_id]["progress"] = 80
             jobs[job_id]["status"] = "converting"
 
-    ydl_opts = {
+    ydl_opts: dict = {
         "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
         "outtmpl": str(job_dir / "%(title)s.%(ext)s"),
@@ -258,35 +366,35 @@ async def _run_ytdlp_youtube(url: str, job_id: str, jobs: Dict[str, Any], job_di
     else:
         print("[ytdlp-yt] sin cookies")
 
-    def do_download():
+    def do_dl():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if info and not jobs[job_id].get("title"):
                 jobs[job_id]["title"] = info.get("title", "Audio")
 
-    await loop.run_in_executor(None, do_download)
+    await loop.run_in_executor(None, do_dl)
 
+
+# ── Spotify ───────────────────────────────────────────────────────────────────
 
 async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
     jobs[job_id]["title"] = "Buscando en Spotify..."
 
-    output_template = str(job_dir / "{title}.{output-ext}")
-    cmd = [SPOTDL_BIN, url, "--output", output_template, "--format", "mp3", "--bitrate", "192k"]
-
+    cmd = [
+        SPOTDL_BIN, url,
+        "--output", str(job_dir / "{title}.{output-ext}"),
+        "--format", "mp3",
+        "--bitrate", "192k",
+    ]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
 
-    stdout_lines = []
     progress = 10
-
-    async for raw_line in proc.stdout:
-        line = raw_line.decode("utf-8", errors="replace").strip()
-        if not line:
-            continue
-        stdout_lines.append(line)
+    async for raw in proc.stdout:
+        line = raw.decode("utf-8", errors="replace").strip()
         if any(k in line for k in ("Downloading", "Downloaded", "Processing")):
             progress = min(progress + 15, 85)
             jobs[job_id]["progress"] = progress
@@ -299,43 +407,43 @@ async def _download_spotdl(url: str, job_id: str, jobs: Dict[str, Any], job_dir:
     await proc.wait()
 
     if proc.returncode != 0:
-        detail = (stderr_out or "\n".join(stdout_lines))[:300]
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["error"] = f"Error de spotdl: {detail}"
+        jobs[job_id]["error"] = f"Error de spotdl: {stderr_out[:300]}"
         return
 
-    mp3_files = sorted(job_dir.rglob("*.mp3"))
-    if not mp3_files:
+    mp3s = sorted(job_dir.rglob("*.mp3"))
+    if not mp3s:
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = "No se encontró la canción en Spotify."
         return
 
-    if len(mp3_files) == 1:
-        jobs[job_id]["file"] = str(mp3_files[0])
-        jobs[job_id]["title"] = mp3_files[0].stem
+    if len(mp3s) == 1:
+        jobs[job_id]["file"] = str(mp3s[0])
+        jobs[job_id]["title"] = mp3s[0].stem
     else:
         zip_path = job_dir / "spotify.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in mp3_files:
+            for f in mp3s:
                 zf.write(f, f.name)
         jobs[job_id]["file"] = str(zip_path)
-        jobs[job_id]["files"] = [f.name for f in mp3_files]
-        jobs[job_id]["title"] = f"{len(mp3_files)} canciones"
+        jobs[job_id]["files"] = [f.name for f in mp3s]
+        jobs[job_id]["title"] = f"{len(mp3s)} canciones"
 
     jobs[job_id]["progress"] = 100
     jobs[job_id]["status"] = "done"
 
 
-async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
-    """Para SoundCloud, Twitch, Vimeo y búsquedas scsearch:"""
+# ── SoundCloud / genérico ─────────────────────────────────────────────────────
+
+async def _download_generic(url: str, job_id: str, jobs: Dict[str, Any], job_dir: Path):
     loop = asyncio.get_event_loop()
 
     def progress_hook(d: dict):
         if d["status"] == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
-            downloaded = d.get("downloaded_bytes", 0)
+            dl = d.get("downloaded_bytes", 0)
             if total:
-                jobs[job_id]["progress"] = min(int((downloaded / total) * 80), 80)
+                jobs[job_id]["progress"] = min(int(dl / total * 80), 80)
             info = d.get("info_dict", {})
             if info.get("title") and not jobs[job_id].get("title"):
                 jobs[job_id]["title"] = info["title"]
@@ -353,20 +461,20 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
         "noplaylist": True,
     }
 
-    def do_download():
+    def do_dl():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if info and not jobs[job_id].get("title"):
                 jobs[job_id]["title"] = info.get("title", "Audio")
 
-    await loop.run_in_executor(None, do_download)
+    await loop.run_in_executor(None, do_dl)
 
-    mp3_files = sorted(job_dir.glob("*.mp3"))
-    if not mp3_files:
+    mp3s = sorted(job_dir.glob("*.mp3"))
+    if not mp3s:
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = "No se generó el MP3. Comprueba que la URL sea válida."
         return
 
-    jobs[job_id]["file"] = str(mp3_files[0])
+    jobs[job_id]["file"] = str(mp3s[0])
     jobs[job_id]["progress"] = 100
     jobs[job_id]["status"] = "done"

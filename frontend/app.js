@@ -307,17 +307,21 @@ async function runSearch() {
         }
 
         searchStatus.textContent = `${results.length} resultados`;
-        resultsList.innerHTML = results.map(r => `
+        resultsList.innerHTML = results.map(r => {
+            const badge = r.source === "soundcloud"
+                ? `<span class="source-badge sc">SC</span>`
+                : `<span class="source-badge yt">YT</span>`;
+            return `
             <div class="result-card">
                 <img class="result-thumb" src="${r.thumbnail}" alt="" loading="lazy"
                      onerror="this.style.opacity='.3'">
                 <div class="result-info">
-                    <div class="result-title" title="${escHtml(r.title)}">${escHtml(r.title)}</div>
+                    <div class="result-title" title="${escHtml(r.title)}">${badge}${escHtml(r.title)}</div>
                     <div class="result-meta">${escHtml(r.channel)}${r.duration ? " · " + r.duration : ""}</div>
                 </div>
                 <button class="result-dl-btn" data-url="${r.url}" data-title="${escHtml(r.title)}" title="Descargar">↓</button>
-            </div>
-        `).join("");
+            </div>`;
+        }).join("");
 
         resultsList.querySelectorAll(".result-dl-btn").forEach(btn => {
             btn.addEventListener("click", () => {

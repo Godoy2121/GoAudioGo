@@ -66,43 +66,82 @@ async def search_youtube(q: str, limit: int = 8):
         return []
 
     loop = asyncio.get_event_loop()
+    base_opts = {"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True}
 
-    def _run_ydl(opts: dict):
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            raw = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
-        entries = raw.get("entries", []) if raw else []
-        return [
-            {
-                "id": vid,
-                "title": e.get("title", ""),
-                "url": f"https://www.youtube.com/watch?v={vid}",
-                "thumbnail": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg",
-                "duration": _fmt_duration(e.get("duration")),
-                "channel": e.get("channel") or e.get("uploader", ""),
-            }
-            for e in entries
-            if (vid := e.get("id", "")) and len(vid) == 11
-        ]
-
-    def do_search():
-        base_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": True,
-            "skip_download": True,
-        }
-        # Intentar con cookies; si fallan (archivo corrupto, expiradas…), buscar sin ellas
+    def _yt_search():
+        opts = {**base_opts}
         if COOKIES_PATH.exists():
             try:
-                return _run_ydl({**base_opts, "cookiefile": str(COOKIES_PATH)})
+                with yt_dlp.YoutubeDL({**opts, "cookiefile": str(COOKIES_PATH)}) as ydl:
+                    raw = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+                entries = raw.get("entries", []) if raw else []
+                if entries:
+                    return entries
             except Exception:
                 pass
-        return _run_ydl(base_opts)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            raw = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+        return raw.get("entries", []) if raw else []
+
+    def _sc_search():
+        sc_limit = max(limit // 2, 3)
+        try:
+            with yt_dlp.YoutubeDL(base_opts) as ydl:
+                raw = ydl.extract_info(f"scsearch{sc_limit}:{q}", download=False)
+            return raw.get("entries", []) if raw else []
+        except Exception:
+            return []
 
     try:
-        return await loop.run_in_executor(None, do_search)
+        yt_entries, sc_entries = await asyncio.gather(
+            loop.run_in_executor(None, _yt_search),
+            loop.run_in_executor(None, _sc_search),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    results = []
+
+    for e in yt_entries:
+        vid = e.get("id", "")
+        if not vid or len(vid) != 11:
+            continue
+        results.append({
+            "id": vid,
+            "title": e.get("title", ""),
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "thumbnail": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg",
+            "duration": _fmt_duration(e.get("duration")),
+            "channel": e.get("channel") or e.get("uploader", ""),
+            "source": "youtube",
+        })
+
+    for e in sc_entries:
+        page_url = e.get("url") or e.get("webpage_url", "")
+        if not page_url or "soundcloud.com" not in page_url:
+            continue
+        thumb = e.get("thumbnail") or e.get("thumbnails", [{}])[0].get("url", "") if e.get("thumbnails") else ""
+        results.append({
+            "id": e.get("id", ""),
+            "title": e.get("title", ""),
+            "url": page_url,
+            "thumbnail": thumb or "",
+            "duration": _fmt_duration(e.get("duration")),
+            "channel": e.get("uploader") or e.get("channel", ""),
+            "source": "soundcloud",
+        })
+
+    # intercalar: un YT, un SC, un YT, un SC…
+    yt_r = [r for r in results if r["source"] == "youtube"]
+    sc_r = [r for r in results if r["source"] == "soundcloud"]
+    merged = []
+    for i in range(max(len(yt_r), len(sc_r))):
+        if i < len(yt_r):
+            merged.append(yt_r[i])
+        if i < len(sc_r):
+            merged.append(sc_r[i])
+
+    return merged
 
 
 @app.get("/api/cookies/status")
