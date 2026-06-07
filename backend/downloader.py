@@ -1,10 +1,13 @@
 import asyncio
-import sys
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Dict, Any
 
 import yt_dlp
+
+# spotdl se instala con pipx en su propio entorno aislado → llamamos al binario
+SPOTDL_BIN = shutil.which("spotdl") or "spotdl"
 
 
 def is_spotify_url(url: str) -> bool:
@@ -97,7 +100,7 @@ async def _download_spotify(url: str, job_id: str, jobs: Dict[str, Any], job_dir
     jobs[job_id]["title"] = "Buscando en Spotify..."
 
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-m", "spotdl",
+        SPOTDL_BIN,
         url,
         "--output", str(job_dir),
         "--format", "mp3",
