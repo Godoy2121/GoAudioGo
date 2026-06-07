@@ -61,7 +61,7 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
         "no_warnings": True,
         "ignoreerrors": False,
         # Probar iOS → Android → web en orden; iOS/Android evitan el bot-check en muchos casos
-        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "ios", "android", "mweb", "web"]}},
+        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
     }
 
     if COOKIES_PATH.exists():
