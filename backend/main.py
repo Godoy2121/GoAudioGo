@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import uvicorn
+import yt_dlp
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse

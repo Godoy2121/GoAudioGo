@@ -282,8 +282,13 @@ async function runSearch() {
     if (!q) return;
 
     searchBtn.disabled = true;
-    searchStatus.textContent = "Buscando...";
     resultsList.innerHTML = "";
+
+    // Avisa si el servidor tarda (cold start de Render ~30-60s tras inactividad)
+    searchStatus.textContent = "Buscando...";
+    const slowTimer = setTimeout(() => {
+        searchStatus.textContent = "El servidor está despertando, espera unos segundos...";
+    }, 4000);
 
     try {
         const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=8`);
@@ -322,6 +327,7 @@ async function runSearch() {
     } catch (err) {
         searchStatus.textContent = "Error: " + err.message;
     } finally {
+        clearTimeout(slowTimer);
         searchBtn.disabled = false;
     }
 }
