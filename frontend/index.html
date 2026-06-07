@@ -18,19 +18,44 @@
         <main>
             <div class="card">
 
-                <!-- URL input -->
-                <div class="input-row">
-                    <span class="platform-icon" id="platformIcon">⬡</span>
-                    <input
-                        type="text"
-                        id="urlInput"
-                        class="url-input"
-                        placeholder="Pega la URL aquí..."
-                        autocomplete="off"
-                        autocorrect="off"
-                        spellcheck="false"
-                    />
-                    <button class="btn-primary" id="downloadBtn">Descargar</button>
+                <!-- Mode toggle -->
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="modeUrlBtn">Pegar URL</button>
+                    <button class="mode-btn" id="modeSearchBtn">🔍 Buscar en YouTube</button>
+                </div>
+
+                <!-- URL mode -->
+                <div id="urlMode">
+                    <div class="input-row">
+                        <span class="platform-icon" id="platformIcon">⬡</span>
+                        <input
+                            type="text"
+                            id="urlInput"
+                            class="url-input"
+                            placeholder="Pega la URL aquí..."
+                            autocomplete="off"
+                            autocorrect="off"
+                            spellcheck="false"
+                        />
+                        <button class="btn-primary" id="downloadBtn">Descargar</button>
+                    </div>
+                </div>
+
+                <!-- Search mode -->
+                <div id="searchMode">
+                    <div class="input-row">
+                        <input
+                            type="text"
+                            id="searchInput"
+                            class="url-input"
+                            placeholder="Busca una canción, artista, podcast..."
+                            autocomplete="off"
+                            spellcheck="false"
+                        />
+                        <button class="btn-primary" id="searchBtn">Buscar</button>
+                    </div>
+                    <div id="searchStatus" class="search-status"></div>
+                    <div id="resultsList" class="results-list"></div>
                 </div>
 
                 <!-- Progress -->
@@ -81,7 +106,7 @@
                         <code>cookies.txt</code> para solucionarlo.<br>
                         Usa la extensión
                         <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener">Get cookies.txt LOCALLY</a>
-                        en Chrome, ve a youtube.com y expórtalas.
+                        en Chrome desde el PC, ve a youtube.com y expórtalas.
                     </p>
                     <div class="cookie-upload-row">
                         <label class="btn-ghost cookie-file-label" for="cookieFile">

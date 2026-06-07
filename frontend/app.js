@@ -47,6 +47,26 @@ function platformName(url) {
     return "web";
 }
 
+// ── Mode toggle ─────────────────────────────────────────────────────────────
+
+const modeUrlBtn    = document.getElementById("modeUrlBtn");
+const modeSearchBtn = document.getElementById("modeSearchBtn");
+const urlModeEl     = document.getElementById("urlMode");
+const searchModeEl  = document.getElementById("searchMode");
+
+modeUrlBtn.addEventListener("click", () => setMode("url"));
+modeSearchBtn.addEventListener("click", () => setMode("search"));
+
+function setMode(mode) {
+    const isSearch = mode === "search";
+    modeUrlBtn.classList.toggle("active", !isSearch);
+    modeSearchBtn.classList.toggle("active", isSearch);
+    urlModeEl.style.display    = isSearch ? "none"  : "block";
+    searchModeEl.style.display = isSearch ? "block" : "none";
+    if (isSearch) searchInput.focus();
+    else urlInput.focus();
+}
+
 // ── DOM refs ────────────────────────────────────────────────────────────────
 
 const urlInput       = document.getElementById("urlInput");
@@ -245,6 +265,69 @@ function showError(message) {
     downloadBtn.disabled = false;
     downloadBtn.textContent = "Descargar";
     errorText.textContent = message;
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+
+const searchInput  = document.getElementById("searchInput");
+const searchBtn    = document.getElementById("searchBtn");
+const searchStatus = document.getElementById("searchStatus");
+const resultsList  = document.getElementById("resultsList");
+
+searchBtn.addEventListener("click", runSearch);
+searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+
+async function runSearch() {
+    const q = searchInput.value.trim();
+    if (!q) return;
+
+    searchBtn.disabled = true;
+    searchStatus.textContent = "Buscando...";
+    resultsList.innerHTML = "";
+
+    try {
+        const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=8`);
+        if (!res.ok) throw new Error("Error en la búsqueda");
+        const results = await res.json();
+
+        if (!results.length) {
+            searchStatus.textContent = "Sin resultados.";
+            return;
+        }
+
+        searchStatus.textContent = `${results.length} resultados`;
+        resultsList.innerHTML = results.map(r => `
+            <div class="result-card">
+                <img class="result-thumb" src="${r.thumbnail}" alt="" loading="lazy"
+                     onerror="this.style.opacity='.3'">
+                <div class="result-info">
+                    <div class="result-title" title="${escHtml(r.title)}">${escHtml(r.title)}</div>
+                    <div class="result-meta">${escHtml(r.channel)}${r.duration ? " · " + r.duration : ""}</div>
+                </div>
+                <button class="result-dl-btn" data-url="${r.url}" title="Descargar">↓</button>
+            </div>
+        `).join("");
+
+        resultsList.querySelectorAll(".result-dl-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const url = btn.dataset.url;
+                setMode("url");
+                urlInput.value = url;
+                platformIconEl.textContent = platformIcon(url);
+                startDownload();
+            });
+        });
+
+        logEvent(analytics, "search", { query: q });
+    } catch (err) {
+        searchStatus.textContent = "Error: " + err.message;
+    } finally {
+        searchBtn.disabled = false;
+    }
+}
+
+function escHtml(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
 // ── Cookies section ─────────────────────────────────────────────────────────

@@ -48,6 +48,54 @@ async def ping():
     return {"status": "ok"}
 
 
+def _fmt_duration(seconds) -> str:
+    if not seconds:
+        return ""
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+@app.get("/api/search")
+async def search_youtube(q: str, limit: int = 8):
+    q = q.strip()
+    if not q:
+        return []
+
+    loop = asyncio.get_event_loop()
+
+    def do_search():
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "skip_download": True,
+        }
+        if COOKIES_PATH.exists():
+            ydl_opts["cookiefile"] = str(COOKIES_PATH)
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            raw = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+            entries = raw.get("entries", []) if raw else []
+            return [
+                {
+                    "id": e["id"],
+                    "title": e.get("title", ""),
+                    "url": f"https://www.youtube.com/watch?v={e['id']}",
+                    "thumbnail": f"https://i.ytimg.com/vi/{e['id']}/mqdefault.jpg",
+                    "duration": _fmt_duration(e.get("duration")),
+                    "channel": e.get("channel") or e.get("uploader", ""),
+                }
+                for e in entries
+                if e.get("id")
+            ]
+
+    try:
+        return await loop.run_in_executor(None, do_search)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/cookies/status")
 async def cookies_status():
     return {"configured": COOKIES_PATH.exists()}
