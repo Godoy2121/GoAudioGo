@@ -48,7 +48,6 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
             jobs[job_id]["status"] = "converting"
 
     ydl_opts = {
-        # m4a primero (compatible con iOS/Android client), luego webm, luego lo que haya
         "format": "bestaudio/best",
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
@@ -60,12 +59,14 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": False,
-        # Probar iOS → Android → web en orden; iOS/Android evitan el bot-check en muchos casos
-        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
     }
 
     if COOKIES_PATH.exists():
+        # Con cookies usamos el cliente web estándar (formatos DASH normales)
         ydl_opts["cookiefile"] = str(COOKIES_PATH)
+    else:
+        # Sin cookies, probamos clientes alternativos para evitar el bot-check
+        ydl_opts["extractor_args"] = {"youtube": {"player_client": ["ios", "android", "web"]}}
 
     def do_download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
