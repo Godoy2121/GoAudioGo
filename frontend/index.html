@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoAudioGo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+
+        <header>
+            <div class="logo">GoAudioGo</div>
+            <p class="tagline">Descarga audio de YouTube, Spotify y más.<br>Sin anuncios. Sin rastreo. Solo música.</p>
+        </header>
+
+        <main>
+            <div class="card">
+
+                <!-- URL input -->
+                <div class="input-row">
+                    <span class="platform-icon" id="platformIcon">⬡</span>
+                    <input
+                        type="text"
+                        id="urlInput"
+                        class="url-input"
+                        placeholder="Pega la URL aquí..."
+                        autocomplete="off"
+                        autocorrect="off"
+                        spellcheck="false"
+                    />
+                    <button class="btn-primary" id="downloadBtn">Descargar</button>
+                </div>
+
+                <!-- Progress -->
+                <div class="section" id="progressSection">
+                    <div class="track-row">
+                        <div>
+                            <div class="track-title" id="trackTitle">Procesando...</div>
+                            <div class="track-status" id="trackStatus">Iniciando...</div>
+                        </div>
+                        <span class="progress-pct" id="progressPct">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+
+                <!-- Success -->
+                <div class="section" id="successSection">
+                    <div class="result-row">
+                        <div class="badge badge-ok">✓</div>
+                        <div class="result-text" id="successText">Listo</div>
+                    </div>
+                    <a class="btn-primary full-width" id="saveBtn" href="#">Guardar MP3</a>
+                    <button class="btn-ghost full-width" id="newBtn">Nueva descarga</button>
+                </div>
+
+                <!-- Error -->
+                <div class="section" id="errorSection">
+                    <div class="result-row">
+                        <div class="badge badge-err">✕</div>
+                        <div class="result-text error-msg" id="errorText">Error</div>
+                    </div>
+                    <button class="btn-ghost full-width" id="retryBtn">Intentar de nuevo</button>
+                </div>
+
+            </div>
+
+            <div class="chips-row">
+                <span class="chip">YouTube</span>
+                <span class="chip">Spotify</span>
+                <span class="chip">SoundCloud</span>
+                <span class="chip">YouTube Music</span>
+                <span class="chip">Twitch</span>
+                <span class="chip">+1000 sitios</span>
+            </div>
+        </main>
+
+        <footer>Solo para uso personal. Respeta los derechos de autor.</footer>
+
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

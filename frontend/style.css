@@ -1,0 +1,281 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --bg:       #080808;
+    --surface:  #111111;
+    --border:   #222222;
+    --accent:   #a3f7b5;
+    --accent2:  #67e8f9;
+    --text:     #f0f0f0;
+    --muted:    #5a5a5a;
+    --error:    #f87171;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 4rem 1.25rem 3rem;
+}
+
+.container {
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* ── Header ── */
+header { text-align: center; }
+
+.logo {
+    font-size: 2.4rem;
+    font-weight: 900;
+    letter-spacing: -1.5px;
+    background: linear-gradient(120deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: .5rem;
+}
+
+.tagline {
+    color: var(--muted);
+    font-size: .875rem;
+    line-height: 1.65;
+}
+
+/* ── Card ── */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ── Input row ── */
+.input-row {
+    display: flex;
+    align-items: center;
+    gap: .625rem;
+}
+
+.platform-icon {
+    font-size: 1.3rem;
+    width: 2rem;
+    text-align: center;
+    flex-shrink: 0;
+    transition: transform .2s;
+    color: var(--muted);
+    user-select: none;
+}
+
+.url-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .75rem .9rem;
+    color: var(--text);
+    font-size: .9rem;
+    outline: none;
+    transition: border-color .2s;
+}
+.url-input:focus { border-color: var(--accent); }
+.url-input::placeholder { color: var(--muted); }
+.url-input.shake {
+    animation: shake .3s ease;
+    border-color: var(--error);
+}
+
+/* ── Buttons ── */
+.btn-primary {
+    background: linear-gradient(120deg, var(--accent), var(--accent2));
+    color: #080808;
+    border: none;
+    border-radius: 10px;
+    padding: .75rem 1.25rem;
+    font-size: .875rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-decoration: none;
+    text-align: center;
+    display: inline-block;
+    transition: opacity .15s, transform .1s;
+}
+.btn-primary:hover:not(:disabled) { opacity: .85; }
+.btn-primary:active:not(:disabled) { transform: scale(.97); }
+.btn-primary:disabled { opacity: .35; cursor: not-allowed; }
+.btn-primary.full-width { width: 100%; }
+
+.btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .65rem 1.25rem;
+    color: var(--muted);
+    font-size: .85rem;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+    width: 100%;
+}
+.btn-ghost:hover { border-color: var(--text); color: var(--text); }
+
+/* ── Collapsible sections ── */
+.section {
+    display: none;
+    flex-direction: column;
+    gap: .75rem;
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+}
+.section.visible { display: flex; }
+
+/* ── Progress ── */
+.track-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .5rem;
+}
+
+.track-title {
+    font-size: .9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 380px;
+}
+
+.track-status {
+    color: var(--muted);
+    font-size: .78rem;
+    margin-top: .2rem;
+}
+
+.progress-pct {
+    color: var(--muted);
+    font-size: .78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    padding-top: .15rem;
+}
+
+.progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    transition: width .5s ease;
+}
+
+/* Indeterminate when no byte data */
+.progress-fill.indeterminate {
+    width: 40% !important;
+    animation: slide 1.6s ease-in-out infinite;
+}
+
+/* ── Result rows ── */
+.result-row {
+    display: flex;
+    align-items: center;
+    gap: .875rem;
+}
+
+.badge {
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .95rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.badge-ok {
+    background: rgba(163, 247, 181, .08);
+    border: 1px solid rgba(163, 247, 181, .25);
+    color: var(--accent);
+}
+.badge-err {
+    background: rgba(248, 113, 113, .08);
+    border: 1px solid rgba(248, 113, 113, .25);
+    color: var(--error);
+}
+
+.result-text {
+    font-size: .875rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+.error-msg { color: var(--error); }
+
+/* ── Platform chips ── */
+.chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    justify-content: center;
+}
+
+.chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: .3rem .7rem;
+    font-size: .72rem;
+    color: var(--muted);
+}
+
+/* ── Footer ── */
+footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: .72rem;
+}
+
+/* ── Animations ── */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%       { transform: translateX(-4px); }
+    40%       { transform: translateX(4px); }
+    60%       { transform: translateX(-3px); }
+    80%       { transform: translateX(3px); }
+}
+
+@keyframes slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+    body { padding: 2.5rem 1rem 2rem; }
+    .logo { font-size: 1.9rem; }
+    .btn-primary { padding: .7rem .9rem; font-size: .8rem; }
+}

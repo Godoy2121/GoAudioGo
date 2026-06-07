@@ -1,0 +1,5 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+yt-dlp>=2024.1.1
+spotdl>=4.2.0
+aiofiles>=23.2.1
