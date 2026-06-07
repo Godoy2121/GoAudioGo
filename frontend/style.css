@@ -442,9 +442,45 @@ header { text-align: center; }
     margin-top: .6rem;
     font-size: .78rem;
     min-height: 1.2em;
+    line-height: 1.6;
 }
-.cookie-feedback.ok  { color: var(--accent); }
-.cookie-feedback.err { color: var(--error); }
+.cookie-feedback .ok  { color: var(--accent); }
+.cookie-feedback.ok   { color: var(--accent); }
+.cookie-feedback.err  { color: var(--error); }
+
+.persist-hint {
+    display: block;
+    margin-top: .4rem;
+    color: var(--muted);
+}
+.persist-hint code {
+    display: block;
+    background: var(--bg);
+    border-radius: 4px;
+    padding: .2em .4em;
+    margin: .2rem 0;
+    font-size: .8em;
+    color: var(--text);
+}
+.b64-row {
+    display: flex;
+    gap: .4rem;
+    margin-top: .35rem;
+}
+.b64-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: .3rem .5rem;
+    color: var(--muted);
+    font-size: .72rem;
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* ── Platform chips ── */
 .chips-row {

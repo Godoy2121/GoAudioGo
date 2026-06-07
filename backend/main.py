@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import shutil
@@ -112,7 +113,10 @@ async def upload_cookies(file: UploadFile = File(...)):
     if not content:
         raise HTTPException(status_code=400, detail="Archivo vacío")
     COOKIES_PATH.write_bytes(content)
-    return {"status": "ok"}
+    # Devuelve el contenido en base64 para que el usuario lo guarde
+    # como variable de entorno YOUTUBE_COOKIES_B64 en Render y no se pierda en cada deploy
+    b64 = base64.b64encode(content).decode()
+    return {"status": "ok", "cookies_b64": b64}
 
 
 @app.post("/api/download")
@@ -209,6 +213,14 @@ async def _cleanup_loop():
 
 @app.on_event("startup")
 async def startup():
+    # Restaurar cookies desde variable de entorno si el disco se limpió en el deploy
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
+    if cookies_b64 and not COOKIES_PATH.exists():
+        try:
+            COOKIES_PATH.write_bytes(base64.b64decode(cookies_b64))
+        except Exception:
+            pass
+
     asyncio.create_task(_cleanup_loop())
 
 

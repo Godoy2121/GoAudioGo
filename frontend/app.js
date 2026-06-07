@@ -372,9 +372,32 @@ cookieSubmit.addEventListener("click", async () => {
     try {
         const res = await fetch(`${API_BASE}/api/cookies`, { method: "POST", body: form });
         if (!res.ok) throw new Error("Error al subir");
-        cookieFeedback.textContent = "✓ Cookies guardadas. Intenta descargar de nuevo.";
-        cookieFeedback.className = "cookie-feedback ok";
+        const data = await res.json();
         cookieStatusDot.className = "dot dot-on";
+
+        if (data.cookies_b64) {
+            cookieFeedback.innerHTML = `
+                <span class="ok">✓ Cookies guardadas.</span>
+                <span class="persist-hint">
+                    Para que no se pierdan en futuros deploys, copia este valor y guárdalo en
+                    Render → tu servicio → <b>Environment</b> → nueva variable:<br>
+                    <code>Key: YOUTUBE_COOKIES_B64</code><br>
+                    <div class="b64-row">
+                        <input class="b64-input" id="b64Value" value="${data.cookies_b64}" readonly />
+                        <button class="btn-ghost" id="copyB64Btn">Copiar</button>
+                    </div>
+                </span>`;
+            cookieFeedback.className = "cookie-feedback";
+            document.getElementById("copyB64Btn").addEventListener("click", () => {
+                navigator.clipboard.writeText(data.cookies_b64).then(() => {
+                    document.getElementById("copyB64Btn").textContent = "✓";
+                    setTimeout(() => document.getElementById("copyB64Btn").textContent = "Copiar", 2000);
+                });
+            });
+        } else {
+            cookieFeedback.textContent = "✓ Cookies guardadas.";
+            cookieFeedback.className = "cookie-feedback ok";
+        }
     } catch {
         cookieFeedback.textContent = "✕ Error al subir el archivo.";
         cookieFeedback.className = "cookie-feedback err";
