@@ -216,12 +216,13 @@ async def _cleanup_loop():
 @app.on_event("startup")
 async def startup():
     # Restaurar cookies desde variable de entorno si el disco se limpió en el deploy
-    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
     if cookies_b64 and not COOKIES_PATH.exists():
         try:
-            COOKIES_PATH.write_bytes(base64.b64decode(cookies_b64))
-        except Exception:
-            pass
+            COOKIES_PATH.write_bytes(base64.b64decode(cookies_b64 + "=="))
+            print(f"[startup] cookies restauradas desde env var ({len(cookies_b64)} chars)")
+        except Exception as exc:
+            print(f"[startup] ERROR al restaurar cookies: {exc}")
 
     asyncio.create_task(_cleanup_loop())
 
