@@ -247,6 +247,64 @@ function showError(message) {
     errorText.textContent = message;
 }
 
+// ── Cookies section ─────────────────────────────────────────────────────────
+
+const cookieToggle   = document.getElementById("cookieToggle");
+const cookieChevron  = document.getElementById("cookieChevron");
+const cookieBody     = document.getElementById("cookieBody");
+const cookieStatusDot = document.getElementById("cookieStatusDot");
+const cookieFile     = document.getElementById("cookieFile");
+const cookieFilename = document.getElementById("cookieFilename");
+const cookieSubmit   = document.getElementById("cookieSubmit");
+const cookieFeedback = document.getElementById("cookieFeedback");
+
+cookieToggle.addEventListener("click", () => {
+    const open = cookieBody.classList.toggle("visible");
+    cookieChevron.classList.toggle("open", open);
+});
+
+cookieFile.addEventListener("change", () => {
+    const f = cookieFile.files[0];
+    cookieFilename.textContent = f ? f.name : "Ningún archivo";
+    cookieSubmit.disabled = !f;
+});
+
+cookieSubmit.addEventListener("click", async () => {
+    const f = cookieFile.files[0];
+    if (!f) return;
+
+    cookieSubmit.disabled = true;
+    cookieFeedback.textContent = "Subiendo...";
+    cookieFeedback.className = "cookie-feedback";
+
+    const form = new FormData();
+    form.append("file", f);
+
+    try {
+        const res = await fetch(`${API_BASE}/api/cookies`, { method: "POST", body: form });
+        if (!res.ok) throw new Error("Error al subir");
+        cookieFeedback.textContent = "✓ Cookies guardadas. Intenta descargar de nuevo.";
+        cookieFeedback.className = "cookie-feedback ok";
+        cookieStatusDot.className = "dot dot-on";
+    } catch {
+        cookieFeedback.textContent = "✕ Error al subir el archivo.";
+        cookieFeedback.className = "cookie-feedback err";
+    } finally {
+        cookieSubmit.disabled = false;
+    }
+});
+
+async function checkCookiesStatus() {
+    if (!API_BASE) return; // local: no hace falta
+    try {
+        const res = await fetch(`${API_BASE}/api/cookies/status`);
+        const { configured } = await res.json();
+        cookieStatusDot.className = `dot ${configured ? "dot-on" : "dot-off"}`;
+    } catch { /* ignore */ }
+}
+
+checkCookiesStatus();
+
 // Render free tier duerme tras 15 min sin uso.
 // Hacemos ping al arrancar la página para que ya esté despierto cuando el usuario lo necesite.
 if (API_BASE) {

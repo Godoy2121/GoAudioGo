@@ -67,6 +67,33 @@
 
             </div>
 
+            <!-- Cookies config -->
+            <div class="cookie-section" id="cookieSection">
+                <button class="cookie-toggle" id="cookieToggle">
+                    <span id="cookieStatusDot" class="dot dot-off"></span>
+                    Cookies de YouTube
+                    <span class="chevron" id="cookieChevron">›</span>
+                </button>
+                <div class="cookie-body" id="cookieBody">
+                    <p class="cookie-desc">
+                        YouTube bloquea descargas desde servidores. Sube tu archivo
+                        <code>cookies.txt</code> para solucionarlo.<br>
+                        Usa la extensión
+                        <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener">Get cookies.txt LOCALLY</a>
+                        en Chrome, ve a youtube.com y expórtalas.
+                    </p>
+                    <div class="cookie-upload-row">
+                        <label class="btn-ghost cookie-file-label" for="cookieFile">
+                            Elegir cookies.txt
+                        </label>
+                        <input type="file" id="cookieFile" accept=".txt" style="display:none" />
+                        <span class="cookie-filename" id="cookieFilename">Ningún archivo</span>
+                        <button class="btn-primary" id="cookieSubmit" disabled>Subir</button>
+                    </div>
+                    <div class="cookie-feedback" id="cookieFeedback"></div>
+                </div>
+            </div>
+
             <div class="chips-row">
                 <span class="chip">YouTube</span>
                 <span class="chip">Spotify</span>

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -6,8 +7,8 @@ from typing import Dict, Any
 
 import yt_dlp
 
-# spotdl se instala con pipx en su propio entorno aislado → llamamos al binario
 SPOTDL_BIN = shutil.which("spotdl") or "spotdl"
+COOKIES_PATH = Path(os.environ.get("COOKIES_PATH", Path(__file__).parent.parent / "cookies.txt"))
 
 
 def is_spotify_url(url: str) -> bool:
@@ -58,7 +59,13 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": False,
+        # Usar cliente iOS primero: menos detectado como bot que el cliente web
+        "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
     }
+
+    # Usar cookies si están disponibles (resuelve el bloqueo de YouTube en servidores)
+    if COOKIES_PATH.exists():
+        ydl_opts["cookiefile"] = str(COOKIES_PATH)
 
     def do_download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -77,7 +84,9 @@ async def _download_ytdlp(url: str, job_id: str, jobs: Dict[str, Any], job_dir: 
 
     if not mp3_files:
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["error"] = "No se generó el MP3. ¿Tienes ffmpeg instalado?"
+        jobs[job_id]["error"] = (
+            "No se generó el MP3. Si es YouTube, sube tus cookies en ⚙ Configuración."
+        )
         return
 
     if len(mp3_files) == 1:

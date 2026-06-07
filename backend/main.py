@@ -9,14 +9,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).parent))
-from downloader import run_download
+from downloader import run_download, COOKIES_PATH
 
 app = FastAPI(title="GoAudioGo", docs_url=None, redoc_url=None)
 
@@ -45,6 +45,20 @@ class DownloadRequest(BaseModel):
 
 @app.get("/health")
 async def health():
+    return {"status": "ok"}
+
+
+@app.get("/api/cookies/status")
+async def cookies_status():
+    return {"configured": COOKIES_PATH.exists()}
+
+
+@app.post("/api/cookies")
+async def upload_cookies(file: UploadFile = File(...)):
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacío")
+    COOKIES_PATH.write_bytes(content)
     return {"status": "ok"}
 
 

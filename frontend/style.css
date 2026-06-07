@@ -235,6 +235,99 @@ header { text-align: center; }
 }
 .error-msg { color: var(--error); }
 
+/* ── Cookies section ── */
+.cookie-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.cookie-toggle {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: .85rem 1.1rem;
+    color: var(--muted);
+    font-size: .82rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    text-align: left;
+}
+.cookie-toggle:hover { color: var(--text); }
+
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.dot-on  { background: var(--accent); }
+.dot-off { background: var(--muted); }
+
+.chevron {
+    margin-left: auto;
+    font-size: 1rem;
+    transition: transform .2s;
+}
+.chevron.open { transform: rotate(90deg); }
+
+.cookie-body {
+    display: none;
+    padding: 0 1.1rem 1.1rem;
+    border-top: 1px solid var(--border);
+}
+.cookie-body.visible { display: block; }
+
+.cookie-desc {
+    font-size: .78rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin: .85rem 0;
+}
+.cookie-desc a { color: var(--accent); text-decoration: none; }
+.cookie-desc a:hover { text-decoration: underline; }
+.cookie-desc code {
+    background: var(--border);
+    border-radius: 4px;
+    padding: .1em .3em;
+    font-size: .85em;
+}
+
+.cookie-upload-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.cookie-file-label {
+    cursor: pointer;
+    padding: .55rem .85rem;
+    font-size: .8rem;
+    width: auto;
+}
+
+.cookie-filename {
+    color: var(--muted);
+    font-size: .78rem;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cookie-feedback {
+    margin-top: .6rem;
+    font-size: .78rem;
+    min-height: 1.2em;
+}
+.cookie-feedback.ok  { color: var(--accent); }
+.cookie-feedback.err { color: var(--error); }
+
 /* ── Platform chips ── */
 .chips-row {
     display: flex;
