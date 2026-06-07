@@ -8,7 +8,8 @@ RUN apt-get update && \
 ENV PATH="/root/.local/bin:$PATH"
 
 RUN pip install --no-cache-dir pipx && \
-    pipx install spotdl
+    pipx install spotdl && \
+    spotdl --download-deno
 
 WORKDIR /app
 
