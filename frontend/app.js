@@ -292,7 +292,10 @@ async function runSearch() {
 
     try {
         const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=8`);
-        if (!res.ok) throw new Error("Error en la búsqueda");
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.detail || `Error ${res.status}`);
+        }
         const results = await res.json();
 
         if (!results.length) {
@@ -325,7 +328,13 @@ async function runSearch() {
 
         logEvent(analytics, "search", { query: q });
     } catch (err) {
-        searchStatus.textContent = "Error: " + err.message;
+        let msg = err.message;
+        // Intentar obtener el detalle real del servidor
+        try {
+            const detail = JSON.parse(err.message);
+            if (detail?.detail) msg = detail.detail;
+        } catch {}
+        searchStatus.textContent = "Error: " + msg;
     } finally {
         clearTimeout(slowTimer);
         searchBtn.disabled = false;
